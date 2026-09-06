@@ -65,9 +65,11 @@ func (b *bridge) fetchAndSaveCDN(ctx context.Context, job MediaJob) (int, string
 	if err != nil {
 		return 0, "", err
 	}
+	b.SetState("imgpub:"+job.ResponseID, pub, 24*time.Hour)
 	b.hook(map[string]any{"kind": "media_ready", "url": job.URL, "file": pub, "response_id": job.ResponseID, "bytes": len(data)})
 	b.addLog("bot", fmt.Sprintf("BOT IN %s [media READY] %s (%d bytes) %s", job.ChatID, job.URL, len(data), pub), map[string]any{"dir": "IN", "type": "media", "text": job.URL, "media": pub, "response_id": job.ResponseID})
 	return len(data), pub, nil
+
 }
 
 func (b *bridge) downloadAndSaveWAMsg(ctx context.Context, job MediaJob) (int, string, error) {
@@ -117,9 +119,11 @@ func (b *bridge) downloadAndSaveWAMsg(ctx context.Context, job MediaJob) (int, s
 	if err != nil {
 		return 0, "", err
 	}
+	b.SetState("imgpub:"+job.ResponseID, pub, 24*time.Hour)
 	b.hook(map[string]any{"kind": "media_ready", "url": "", "file": pub, "msg_id": job.MsgID, "bytes": len(data)})
 	b.addLog("bot", fmt.Sprintf("BOT %s %s [media] (%d bytes) %s", "OUT", job.ChatID, len(data), pub), map[string]any{"dir": "OUT", "media": pub, "chat": job.ChatID, "id": job.MsgID})
 	return len(data), pub, nil
+
 }
 
 func (b *bridge) mediaWorker() {

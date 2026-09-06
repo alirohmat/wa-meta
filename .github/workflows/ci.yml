@@ -1,0 +1,18 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request: {}
+jobs:
+  vet-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.26' }
+      - run: sudo apt-get update && sudo apt-get install -y gcc
+      - run: go env
+      - run: go mod tidy
+      - run: git diff --exit-code -- go.mod go.sum || (echo "go.mod/go.sum perlu commit"; git diff go.mod go.sum; exit 1)
+      - run: go vet ./...
+      - run: CGO_ENABLED=1 go build -ldflags="-s -w" -o wabot . && ls -lh wabot
+      - run: docker build -t wa-meta:test . && echo "docker OK" && docker images wa-meta:test

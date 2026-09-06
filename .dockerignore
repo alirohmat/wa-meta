@@ -1,0 +1,7 @@
+media/
+*.db
+*.db-journal
+.git
+.gitignore
+main.go.bak.local
+/tmp/

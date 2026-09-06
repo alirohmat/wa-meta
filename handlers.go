@@ -39,6 +39,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 	if !isBot {
 		return
 	}
+	seenURL := make(map[string]struct{})
 	rawBytes, mErr := proto.Marshal(evt.Message)
 	if mErr == nil {
 		for _, u := range cdnURL.FindAllString(string(rawBytes), -1) {
@@ -82,31 +83,41 @@ func (b *bridge) handleMessage(evt *events.Message) {
 													b.SetState("img:"+responseID, "1", 24*time.Hour)
 													if mediaMap, ok := prim["media"].(map[string]any); ok {
 														if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
-															mimeType, _ := mediaMap["mime_type"].(string)
-															b.addLog("info", "🎯 MEDIA READY (queue): "+urlStr, map[string]any{"id": info.ID, "response_id": responseID, "mime": mimeType})
-															select {
-															case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: urlStr, MimeType: mimeType, Kind: "cdn"}:
-															default:
-																processedImages.Delete(responseID)
-																b.addLog("warn", "media queue penuh drop "+responseID, nil)
+															if _, dup := seenURL[urlStr]; dup {
+															} else {
+																seenURL[urlStr] = struct{}{}
+																mimeType, _ := mediaMap["mime_type"].(string)
+																b.addLog("info", "🎯 MEDIA READY (queue): "+urlStr, map[string]any{"id": info.ID, "response_id": responseID, "mime": mimeType})
+																select {
+																case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: urlStr, MimeType: mimeType, Kind: "cdn"}:
+																default:
+																	processedImages.Delete(responseID)
+																	b.addLog("warn", "media queue penuh drop "+responseID, nil)
+																}
 															}
 														} else {
 															raw, _ := json.Marshal(prim)
 															if u2, err2 := b.extractCDNURL(string(raw), info.Chat.String()); err2 == nil && u2 != "" {
-																select {
-																case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
-																default:
-																	processedImages.Delete(responseID)
+																if _, dup := seenURL[u2]; !dup {
+																	seenURL[u2] = struct{}{}
+																	select {
+																	case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
+																	default:
+																		processedImages.Delete(responseID)
+																	}
 																}
 															}
-														}
-													} else {
-														raw, _ := json.Marshal(prim)
-														if u2, err2 := b.extractCDNURL(string(raw), info.Chat.String()); err2 == nil && u2 != "" {
-															select {
-															case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
-															default:
-																processedImages.Delete(responseID)
+														} else {
+															raw, _ := json.Marshal(prim)
+															if u2, err2 := b.extractCDNURL(string(raw), info.Chat.String()); err2 == nil && u2 != "" {
+																if _, dup := seenURL[u2]; !dup {
+																	seenURL[u2] = struct{}{}
+																	select {
+																	case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
+																	default:
+																		processedImages.Delete(responseID)
+																	}
+																}
 															}
 														}
 													}
@@ -209,8 +220,12 @@ func (b *bridge) handleMessage(evt *events.Message) {
 			}
 		}
 	}
-	for _, u := range richImages(evt.Message) {
-		rid2 := evt.Info.ID + fmt.Sprintf("-%d", len(files))
+	for i, u := range richImages(evt.Message) {
+		if _, dup := seenURL[u]; dup {
+			continue
+		}
+		seenURL[u] = struct{}{}
+		rid2 := evt.Info.ID + fmt.Sprintf("-%d", i)
 		if _, loaded := processedImages.LoadOrStore(rid2, true); !loaded {
 			b.SetState("img:"+rid2, "1", 24*time.Hour)
 			select {

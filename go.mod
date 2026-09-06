@@ -3,6 +3,7 @@ module wabot
 go 1.26.0
 
 require (
+	github.com/jackc/pgx/v5 v5.6.0
 	github.com/mattn/go-sqlite3 v1.14.49
 	go.mau.fi/whatsmeow v0.0.0-20260904121843-28bfe537ea6a
 )

@@ -15,6 +15,15 @@ type telemetryJob struct {
 }
 
 func setupTelemetryTable(db *sql.DB) error {
+	if isPostgres() {
+		_, err := db.Exec(`CREATE TABLE IF NOT EXISTS telemetry_failures(id SERIAL PRIMARY KEY, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, chat_id TEXT, payload TEXT, error_reason TEXT)`)
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON telemetry_failures(timestamp DESC)`)
+		return err
+	}
+
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS telemetry_failures(id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, chat_id TEXT, payload TEXT, error_reason TEXT);`)
 	if err != nil {
 		return err
@@ -26,7 +35,11 @@ func setupTelemetryTable(db *sql.DB) error {
 func (b *bridge) telemetryWriter() {
 	for job := range b.telemetryCh {
 		b.dbMu.Lock()
-		_, _ = b.stateDB.Exec(`INSERT INTO telemetry_failures(chat_id, payload, error_reason) VALUES(?,?,?)`, job.ChatID, job.Payload, job.Reason)
+		if isPostgres() {
+			_, _ = b.stateDB.Exec(`INSERT INTO telemetry_failures(chat_id, payload, error_reason) VALUES($1,$2,$3)`, job.ChatID, job.Payload, job.Reason)
+		} else {
+			_, _ = b.stateDB.Exec(`INSERT INTO telemetry_failures(chat_id, payload, error_reason) VALUES(?,?,?)`, job.ChatID, job.Payload, job.Reason)
+		}
 		b.dbMu.Unlock()
 	}
 }
@@ -41,7 +54,11 @@ func (b *bridge) saveTelemetryAsync(chatID, payload, reason string) {
 	default:
 		go func() {
 			b.dbMu.Lock()
-			_, _ = b.stateDB.Exec(`INSERT INTO telemetry_failures(chat_id, payload, error_reason) VALUES(?,?,?)`, job.ChatID, job.Payload, job.Reason)
+			if isPostgres() {
+				_, _ = b.stateDB.Exec(`INSERT INTO telemetry_failures(chat_id, payload, error_reason) VALUES($1,$2,$3)`, job.ChatID, job.Payload, job.Reason)
+			} else {
+				_, _ = b.stateDB.Exec(`INSERT INTO telemetry_failures(chat_id, payload, error_reason) VALUES(?,?,?)`, job.ChatID, job.Payload, job.Reason)
+			}
 			b.dbMu.Unlock()
 		}()
 	}

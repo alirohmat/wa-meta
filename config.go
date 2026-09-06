@@ -14,6 +14,24 @@ func envStr(k, def string) string {
 	return def
 }
 
+// getDSN resolves the database driver+DSN from environment. If any of
+// DATABASE_URL / POSTGRES_URL / POSTGRES_DSN is set, postgres via pgx is
+// selected; otherwise the legacy embedded sqlite3 file is used.
+func getDSN() (string, string) {
+	for _, env := range []string{"DATABASE_URL", "POSTGRES_URL", "POSTGRES_DSN"} {
+		if dsn := strings.TrimSpace(os.Getenv(env)); dsn != "" {
+			return "pgx", dsn
+		}
+	}
+	return "sqlite3", "file:wabot.db?_foreign_keys=on"
+}
+
+// isPostgres reports whether the current driver selection is postgres/pgx.
+func isPostgres() bool {
+	driver, _ := getDSN()
+	return driver == "pgx"
+}
+
 var botJID = parseBot(envStr("BOT", "867051314767696@bot"), types.NewJID("867051314767696", "bot"))
 var webhook = os.Getenv("WEBHOOK")
 var mediaDir = envStr("MEDIA_DIR", "./media")

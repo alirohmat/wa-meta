@@ -17,6 +17,15 @@ type stateWriteJob struct {
 }
 
 func setupStateTable(db *sql.DB) error {
+	if isPostgres() {
+		_, err := db.Exec(`CREATE TABLE IF NOT EXISTS bot_state(key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at BIGINT NOT NULL)`)
+		if err != nil {
+			return err
+		}
+		_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_bot_state_expires ON bot_state(expires_at)`)
+		return err
+	}
+
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL;`); err != nil {
 		return err
 	}
@@ -30,7 +39,13 @@ func setupStateTable(db *sql.DB) error {
 }
 
 func (b *bridge) LoadStateOnStartup() error {
-	rows, err := b.stateDB.Query(`SELECT key, value FROM bot_state WHERE expires_at > strftime('%s','now')`)
+	var rows *sql.Rows
+	var err error
+	if isPostgres() {
+		rows, err = b.stateDB.Query(`SELECT key, value FROM bot_state WHERE expires_at > $1`, time.Now().Unix())
+	} else {
+		rows, err = b.stateDB.Query(`SELECT key, value FROM bot_state WHERE expires_at > ?`, time.Now().Unix())
+	}
 	if err != nil {
 		return err
 	}
@@ -77,7 +92,11 @@ func (b *bridge) SetState(key string, value string, ttl time.Duration) {
 func (b *bridge) stateWriter() {
 	for job := range b.stateWriteCh {
 		b.dbMu.Lock()
-		_, _ = b.stateDB.Exec(`INSERT OR REPLACE INTO bot_state(key, value, expires_at) VALUES(?,?,?)`, job.Key, job.Value, job.ExpiresAt)
+		if isPostgres() {
+			_, _ = b.stateDB.Exec(`INSERT INTO bot_state(key, value, expires_at) VALUES($1, $2, $3) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at`, job.Key, job.Value, job.ExpiresAt)
+		} else {
+			_, _ = b.stateDB.Exec(`INSERT OR REPLACE INTO bot_state(key, value, expires_at) VALUES(?,?,?)`, job.Key, job.Value, job.ExpiresAt)
+		}
 		b.dbMu.Unlock()
 	}
 }
@@ -87,8 +106,15 @@ func (b *bridge) startStateGC() {
 	defer tick.Stop()
 	for range tick.C {
 		b.dbMu.Lock()
-		res, _ := b.stateDB.Exec(`DELETE FROM bot_state WHERE expires_at < strftime('%s','now')`)
+		var res sql.Result
+		var err error
+		if isPostgres() {
+			res, err = b.stateDB.Exec(`DELETE FROM bot_state WHERE expires_at < $1`, time.Now().Unix())
+		} else {
+			res, err = b.stateDB.Exec(`DELETE FROM bot_state WHERE expires_at < ?`, time.Now().Unix())
+		}
 		b.dbMu.Unlock()
+		_ = err
 		if n, _ := res.RowsAffected(); n > 0 {
 			b.addLog("info", fmt.Sprintf("state GC %d expired", n), nil)
 		}

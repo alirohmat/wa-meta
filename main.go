@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -129,7 +130,8 @@ st0();
 func main() {
 	ctx := context.Background()
 	os.MkdirAll(mediaDir, 0755)
-	container, err := sqlstore.New(ctx, "sqlite3", "file:wabot.db?_foreign_keys=on", waLog.Stdout("db", "WARN", true))
+	driver, dsn := getDSN()
+	container, err := sqlstore.New(ctx, driver, dsn, waLog.Stdout("db", "WARN", true))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -139,7 +141,7 @@ func main() {
 	}
 	client := whatsmeow.NewClient(device, waLog.Stdout("wa", "INFO", true))
 	b := &bridge{client: client, container: container, logs: &logStore{}}
-	rawDB, _ := sql.Open("sqlite3", "file:/root/wa-bot/wabot.db?_foreign_keys=on")
+	rawDB, _ := sql.Open(driver, dsn)
 	if rawDB != nil {
 		b.stateDB = rawDB
 		_ = setupStateTable(b.stateDB)

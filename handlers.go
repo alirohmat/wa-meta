@@ -43,13 +43,19 @@ func (b *bridge) handleMessage(evt *events.Message) {
 	rawBytes, mErr := proto.Marshal(evt.Message)
 	if mErr == nil {
 		for _, u := range cdnURL.FindAllString(string(rawBytes), -1) {
-			b.addLog("info", "🎯 URL CDN raw: "+u, map[string]any{"id": info.ID, "src": "raw"})
+			if _, dup := seenURL[u]; !dup {
+				seenURL[u] = struct{}{}
+				b.addLog("info", "🎯 URL CDN raw: "+u, map[string]any{"id": info.ID, "src": "raw"})
+			}
 		}
 	}
 	dump := richDump(evt.Message)
 	if dump != "" {
 		for _, u := range cdnURL.FindAllString(dump, -1) {
-			b.addLog("info", "🎯 URL richDump: "+u, map[string]any{"id": info.ID, "src": "dump"})
+			if _, dup := seenURL[u]; !dup {
+				seenURL[u] = struct{}{}
+				b.addLog("info", "🎯 URL richDump: "+u, map[string]any{"id": info.ID, "src": "dump"})
+			}
 		}
 	}
 	if pm := evt.Message.GetProtocolMessage(); pm != nil && pm.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
@@ -106,16 +112,16 @@ func (b *bridge) handleMessage(evt *events.Message) {
 																	}
 																}
 															}
-														} else {
-															raw, _ := json.Marshal(prim)
-															if u2, err2 := b.extractCDNURL(string(raw), info.Chat.String()); err2 == nil && u2 != "" {
-																if _, dup := seenURL[u2]; !dup {
-																	seenURL[u2] = struct{}{}
-																	select {
-																	case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
-																	default:
-																		processedImages.Delete(responseID)
-																	}
+														}
+													} else {
+														raw, _ := json.Marshal(prim)
+														if u2, err2 := b.extractCDNURL(string(raw), info.Chat.String()); err2 == nil && u2 != "" {
+															if _, dup := seenURL[u2]; !dup {
+																seenURL[u2] = struct{}{}
+																select {
+																case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
+																default:
+																	processedImages.Delete(responseID)
 																}
 															}
 														}
@@ -220,17 +226,16 @@ func (b *bridge) handleMessage(evt *events.Message) {
 		}
 	}
 	for i, u := range richImages(evt.Message) {
-		if _, dup := seenURL[u]; dup {
-			continue
-		}
-		seenURL[u] = struct{}{}
-		rid2 := evt.Info.ID + fmt.Sprintf("-%d", i)
-		if _, loaded := processedImages.LoadOrStore(rid2, true); !loaded {
-			b.SetState("img:"+rid2, "1", 24*time.Hour)
-			select {
-			case b.mediaJobs <- MediaJob{ResponseID: rid2, ChatID: info.Chat.String(), MsgID: evt.Info.ID, URL: u, Kind: "cdn"}:
-			default:
-				processedImages.Delete(rid2)
+		if _, dup := seenURL[u]; !dup {
+			seenURL[u] = struct{}{}
+			rid2 := evt.Info.ID + fmt.Sprintf("-%d", i)
+			if _, loaded := processedImages.LoadOrStore(rid2, true); !loaded {
+				b.SetState("img:"+rid2, "1", 24*time.Hour)
+				select {
+				case b.mediaJobs <- MediaJob{ResponseID: rid2, ChatID: info.Chat.String(), MsgID: evt.Info.ID, URL: u, Kind: "cdn"}:
+				default:
+					processedImages.Delete(rid2)
+				}
 			}
 		}
 	}

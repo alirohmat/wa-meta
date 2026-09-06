@@ -2,4 +2,5 @@
 *.db-journal
 media/
 tmp/
+.env
 main.go.bak.local

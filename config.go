@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http"
 	"os"
 	"strings"
 
@@ -36,6 +37,40 @@ var botJID = parseBot(envStr("BOT", "867051314767696@bot"), types.NewJID("867051
 var webhook = os.Getenv("WEBHOOK")
 var mediaDir = envStr("MEDIA_DIR", "./media")
 var publicPrefix = envStr("PUBLIC_PREFIX", "/media")
+var apiKey = func() string {
+	if v := strings.TrimSpace(os.Getenv("API_KEY")); v != "" {
+		return v
+	}
+	return strings.TrimSpace(os.Getenv("WABOT_API_KEY"))
+}()
+
+func checkAPIKey(r *http.Request) bool {
+	if apiKey == "" {
+		return true
+	}
+	if v := strings.TrimSpace(r.Header.Get("X-API-Key")); v != "" && v == apiKey {
+		return true
+	}
+	if a := strings.TrimSpace(r.Header.Get("Authorization")); strings.HasPrefix(strings.ToLower(a), "bearer ") && strings.TrimSpace(a[7:]) == apiKey {
+		return true
+	}
+	if q := strings.TrimSpace(r.URL.Query().Get("key")); q != "" && q == apiKey {
+		return true
+	}
+	return false
+}
+
+func requireAPIKey(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !checkAPIKey(r) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(401)
+			_, _ = w.Write([]byte(`{"ok":false,"error":"unauthorized: API key required (X-API-Key or Authorization: Bearer)"}`))
+			return
+		}
+		next(w, r)
+	}
+}
 
 func parseBot(s string, def types.JID) types.JID {
 	if j, err := types.ParseJID(s); err == nil && j.User != "" {

@@ -200,7 +200,7 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(out)
 	})
-	mux.HandleFunc("/api/pair", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/pair", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Phone string `json:"phone"`
 		}
@@ -240,8 +240,8 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"phone": in.Phone, "code": code})
-	})
-	mux.HandleFunc("/api/send", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/api/send", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "POST only", 405)
 			return
@@ -287,8 +287,8 @@ func main() {
 		b.addLog("bot", fmt.Sprintf("BOT OUT %s [%s] %s", to.String(), "conversation", in.Text), map[string]any{"dir": "OUT", "text": in.Text, "to": to.String(), "chat": to.String()})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String()})
-	})
-	mux.HandleFunc("/api/generate", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/api/generate", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			http.Error(w, "POST only", 405)
 			return
@@ -541,8 +541,8 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "elapsed_ms": time.Since(sentAt).Milliseconds()})
-	})
-	mux.HandleFunc("/api/logout", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/api/logout", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		b.pm.Lock()
 		b.phone = ""
 		b.pairCode = ""
@@ -557,7 +557,7 @@ func main() {
 		}
 		b.addLog("info", "logout sukses, siap pairing ulang", nil)
 		json.NewEncoder(w).Encode(map[string]any{"ok": true})
-	})
+	}))
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")

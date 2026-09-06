@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/mattn/go-sqlite3 v1.14.49
 	go.mau.fi/whatsmeow v0.0.0-20260904121843-28bfe537ea6a
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
@@ -14,6 +15,9 @@ require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/petermattis/goid v0.0.0-20260816044145-ed329add6b1b // indirect
@@ -27,5 +31,4 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
-	google.golang.org/protobuf v1.36.12 // indirect
 )

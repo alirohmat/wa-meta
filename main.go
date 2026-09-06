@@ -267,7 +267,16 @@ func main() {
 				to = j
 			}
 		}
-		_, err := b.client.SendMessage(r.Context(), to, &waE2E.Message{Conversation: &in.Text})
+		if !b.client.IsConnected() {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(503)
+			json.NewEncoder(w).Encode(map[string]any{"error": "wa client belum connected", "hint": "reconnect dulu lalu coba lagi"})
+			b.addLog("warn", "send gagal ke "+to.String()+": client belum connected", nil)
+			return
+		}
+		ctx2, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, err := b.client.SendMessage(ctx2, to, &waE2E.Message{Conversation: &in.Text})
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(502)

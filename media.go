@@ -137,7 +137,11 @@ func (b *bridge) mediaWorker() {
 		}
 		cancel()
 		if err != nil {
-			b.addLog("warn", "media job gagal "+job.ResponseID+": "+err.Error(), nil)
+			if err.Error() == "no downloadable media" {
+				b.addLog("debug", "media job skip no downloadable media "+job.ResponseID, nil)
+			} else {
+				b.addLog("warn", "media job gagal "+job.ResponseID+": "+err.Error(), nil)
+			}
 			processedImages.Delete(job.ResponseID)
 			continue
 		}

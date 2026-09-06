@@ -288,6 +288,260 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String()})
 	})
+	mux.HandleFunc("/api/generate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "POST only", 405)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if b.client.Store.ID == nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(401)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "belum login"})
+			return
+		}
+		if !b.client.IsConnected() {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(503)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "wa client belum connected"})
+			return
+		}
+		var in struct {
+			Text    string `json:"text"`
+			Prompt  string `json:"prompt"`
+			To      string `json:"to"`
+			Timeout int    `json:"timeout"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &in)
+		txt := strings.TrimSpace(in.Text)
+		if txt == "" {
+			txt = strings.TrimSpace(in.Prompt)
+		}
+		if txt == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(400)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "text/prompt kosong"})
+			return
+		}
+		to := botJID
+		if strings.TrimSpace(in.To) != "" {
+			if j, err := types.ParseJID(strings.TrimSpace(in.To)); err == nil && j.User != "" {
+				to = j
+			}
+		}
+		timeout := in.Timeout
+		if timeout <= 0 {
+			timeout = 75
+		}
+		if timeout > 120 {
+			timeout = 120
+		}
+		sentAt := time.Now()
+		snapLogs := b.logs.all()
+		snapN := len(snapLogs)
+		// collect existing media set to detect new files
+		existing := map[string]bool{}
+		_ = filepath.WalkDir(mediaDir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			existing[p] = true
+			return nil
+		})
+		ctx2, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		_, err := b.client.SendMessage(ctx2, to, &waE2E.Message{Conversation: &txt})
+		cancel()
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(502)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": err.Error()})
+			b.addLog("warn", "generate send gagal: "+err.Error(), nil)
+			return
+		}
+		b.addLog("bot", fmt.Sprintf("BOT OUT %s [conversation] %s", to.String(), txt), map[string]any{"dir": "OUT", "text": txt, "to": to.String()})
+		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
+		var reply string
+		var replyRaw string
+		tick := time.NewTicker(500 * time.Millisecond)
+		defer tick.Stop()
+		// poll until deadline: gather latest BOT IN and new media
+		for time.Now().Before(deadline) {
+			// scan new bot logs
+			all := b.logs.all()
+			for i := snapN; i < len(all); i++ {
+				e := all[i]
+				if e.Level != "bot" {
+					continue
+				}
+				// detect IN via extra.dir or msg prefix
+				isIn := strings.Contains(e.Msg, "BOT IN") || strings.Contains(e.Msg, " BOT IN ")
+				if ex, ok := e.Extra.(map[string]any); ok {
+					if d, ok := ex["dir"].(string); ok && d == "IN" {
+						isIn = true
+					}
+					if isIn {
+						if t, ok := ex["text"].(string); ok && strings.TrimSpace(t) != "" {
+							reply = t
+						} else {
+							// fallback: strip prefix from msg
+							m := e.Msg
+							if idx := strings.Index(m, "BOT IN"); idx >= 0 {
+								replyRaw = strings.TrimSpace(m[idx+6:])
+								// remove leading "[...]" tag
+								if j := strings.Index(replyRaw, "]"); j >= 0 && j < 60 {
+									replyRaw = strings.TrimSpace(replyRaw[j+1:])
+								}
+								reply = replyRaw
+							} else {
+								reply = m
+							}
+						}
+					}
+				} else if isIn {
+					m := e.Msg
+					if idx := strings.Index(m, "BOT IN"); idx >= 0 {
+						replyRaw = strings.TrimSpace(m[idx+6:])
+						if j := strings.Index(replyRaw, "]"); j >= 0 && j < 60 {
+							replyRaw = strings.TrimSpace(replyRaw[j+1:])
+						}
+						reply = replyRaw
+					}
+				}
+			}
+			// heuristic early exit: if we have reply, and media already appeared, wait 2s more then return
+			// check media new count
+			newMedia := []string{}
+			_ = filepath.WalkDir(mediaDir, func(p string, d os.DirEntry, err error) error {
+				if err != nil || d.IsDir() {
+					return nil
+				}
+				if existing[p] {
+					return nil
+				}
+				fi, err := d.Info()
+				if err == nil && fi.ModTime().Before(sentAt) {
+					return nil
+				}
+				rel, _ := filepath.Rel(mediaDir, p)
+				rel = filepath.ToSlash(rel)
+				newMedia = append(newMedia, publicPrefix+"/"+rel)
+				return nil
+			})
+			if reply != "" && len(newMedia) > 0 {
+				// media ready + text ready -> small grace then return
+				time.Sleep(1200 * time.Millisecond)
+				// re-collect after grace (maybe second part arrives)
+				_ = filepath.WalkDir(mediaDir, func(p string, d os.DirEntry, err error) error {
+					if err != nil || d.IsDir() {
+						return nil
+					}
+					if existing[p] {
+						return nil
+					}
+					rel, _ := filepath.Rel(mediaDir, p)
+					rel = filepath.ToSlash(rel)
+					u := publicPrefix + "/" + rel
+					found := false
+					for _, v := range newMedia {
+						if v == u {
+							found = true
+							break
+						}
+					}
+					if !found {
+						newMedia = append(newMedia, u)
+					}
+					return nil
+				})
+				sort.Strings(newMedia)
+				scheme := "https"
+				if r.TLS == nil {
+					if h := r.Header.Get("X-Forwarded-Proto"); h != "" {
+						scheme = h
+					} else if r.URL.Scheme != "" {
+						scheme = r.URL.Scheme
+					} else {
+						scheme = "http"
+					}
+					if r.Host == "" {
+						scheme = "https"
+					}
+				}
+				host := r.Host
+				if host == "" {
+					host = r.Header.Get("X-Forwarded-Host")
+				}
+				full := []string{}
+				for _, u := range newMedia {
+					if host != "" {
+						full = append(full, scheme+"://"+host+u)
+					} else {
+						full = append(full, u)
+					}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "elapsed_ms": time.Since(sentAt).Milliseconds()})
+				return
+			}
+			if time.Now().After(deadline) {
+				break
+			}
+			<-tick.C
+		}
+		// deadline reached: return what we have
+		all := b.logs.all()
+		for i := snapN; i < len(all); i++ {
+			e := all[i]
+			if e.Level != "bot" || !strings.Contains(e.Msg, "BOT IN") {
+				continue
+			}
+			if ex, ok := e.Extra.(map[string]any); ok {
+				if d, ok := ex["dir"].(string); ok && d == "IN" {
+					if t, ok := ex["text"].(string); ok && t != "" {
+						reply = t
+					}
+				}
+			}
+		}
+		newMedia := []string{}
+		_ = filepath.WalkDir(mediaDir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			if existing[p] {
+				return nil
+			}
+			rel, _ := filepath.Rel(mediaDir, p)
+			rel = filepath.ToSlash(rel)
+			newMedia = append(newMedia, publicPrefix+"/"+rel)
+			return nil
+		})
+		sort.Strings(newMedia)
+		if reply == "" && len(newMedia) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(504)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "timeout menunggu balasan bot", "hint": "coba lagi atau cek GET /api/logs dan GET /api/media", "elapsed_ms": time.Since(sentAt).Milliseconds()})
+			return
+		}
+		scheme := "https"
+		if r.TLS == nil {
+			if h := r.Header.Get("X-Forwarded-Proto"); h != "" {
+				scheme = h
+			}
+		}
+		host := r.Host
+		full := []string{}
+		for _, u := range newMedia {
+			if host != "" {
+				full = append(full, scheme+"://"+host+u)
+			} else {
+				full = append(full, u)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "elapsed_ms": time.Since(sentAt).Milliseconds()})
+	})
 	mux.HandleFunc("/api/logout", func(w http.ResponseWriter, r *http.Request) {
 		b.pm.Lock()
 		b.phone = ""

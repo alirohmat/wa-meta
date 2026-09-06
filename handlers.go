@@ -83,8 +83,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 													b.SetState("img:"+responseID, "1", 24*time.Hour)
 													if mediaMap, ok := prim["media"].(map[string]any); ok {
 														if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
-															if _, dup := seenURL[urlStr]; dup {
-															} else {
+															if _, dup := seenURL[urlStr]; !dup {
 																seenURL[urlStr] = struct{}{}
 																mimeType, _ := mediaMap["mime_type"].(string)
 																b.addLog("info", "🎯 MEDIA READY (queue): "+urlStr, map[string]any{"id": info.ID, "response_id": responseID, "mime": mimeType})

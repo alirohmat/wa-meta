@@ -211,6 +211,21 @@ func extractTextFull(m *waE2E.Message, fallbackID string) (string, string) {
 	}
 	return id, ""
 }
+func dedupeStrings(in []string) []string {
+	if len(in) == 0 {
+		return []string{}
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
 func containerRefs(m *waE2E.Message) []string {
 	t := richText(unwrap(m))
 	if t == "" {

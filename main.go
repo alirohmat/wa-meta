@@ -481,7 +481,7 @@ func main() {
 					}
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "elapsed_ms": time.Since(sentAt).Milliseconds()})
+				json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "container_refs": dedupeStrings(containerURL.FindAllString(reply, -1)), "elapsed_ms": time.Since(sentAt).Milliseconds()})
 				return
 			}
 			if time.Now().After(deadline) {
@@ -540,7 +540,7 @@ func main() {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "elapsed_ms": time.Since(sentAt).Milliseconds()})
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "container_refs": dedupeStrings(containerURL.FindAllString(reply, -1)), "elapsed_ms": time.Since(sentAt).Milliseconds()})
 	}))
 	mux.HandleFunc("/api/logout", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		b.pm.Lock()

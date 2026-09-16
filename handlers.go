@@ -40,22 +40,34 @@ func (b *bridge) handleMessage(evt *events.Message) {
 		return
 	}
 	seenURL := make(map[string]struct{})
+	queueCDN := func(u, src string, i int) {
+		if _, dup := seenURL[u]; dup {
+			return
+		}
+		seenURL[u] = struct{}{}
+		b.addLog("info", "🎯 URL CDN "+src+": "+u, map[string]any{"id": info.ID, "src": src})
+		rid := fmt.Sprintf("%s-%s-%d", info.ID, src, i)
+		if _, loaded := processedImages.LoadOrStore(rid, true); loaded {
+			return
+		}
+		b.SetState("img:"+rid, "1", 24*time.Hour)
+		select {
+		case b.mediaJobs <- MediaJob{ResponseID: rid, ChatID: info.Chat.String(), MsgID: info.ID, URL: u, Kind: "cdn"}:
+		default:
+			processedImages.Delete(rid)
+			b.addLog("warn", "media queue penuh drop "+rid, nil)
+		}
+	}
 	rawBytes, mErr := proto.Marshal(evt.Message)
 	if mErr == nil {
-		for _, u := range cdnURL.FindAllString(string(rawBytes), -1) {
-			if _, dup := seenURL[u]; !dup {
-				seenURL[u] = struct{}{}
-				b.addLog("info", "🎯 URL CDN raw: "+u, map[string]any{"id": info.ID, "src": "raw"})
-			}
+		for i, u := range cdnURL.FindAllString(string(rawBytes), -1) {
+			queueCDN(u, "raw", i)
 		}
 	}
 	dump := richDump(evt.Message)
 	if dump != "" {
-		for _, u := range cdnURL.FindAllString(dump, -1) {
-			if _, dup := seenURL[u]; !dup {
-				seenURL[u] = struct{}{}
-				b.addLog("info", "🎯 URL richDump: "+u, map[string]any{"id": info.ID, "src": "dump"})
-			}
+		for i, u := range cdnURL.FindAllString(dump, -1) {
+			queueCDN(u, "dump", i)
 		}
 	}
 	if pm := evt.Message.GetProtocolMessage(); pm != nil && pm.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
@@ -207,7 +219,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 		trimTxt = trimTxt[:800] + "…"
 	}
 	var files []string
-	if hasMedia(body) {
+	if hasWABinary(body) {
 		rid := info.ID
 		if _, loaded := processedImages.LoadOrStore(rid, true); !loaded {
 			b.SetState("img:"+rid, "1", 24*time.Hour)

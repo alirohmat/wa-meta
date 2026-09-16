@@ -228,17 +228,20 @@ func containerRefs(m *waE2E.Message) []string {
 	}
 	return out
 }
-func hasMedia(m *waE2E.Message) bool {
+func hasWABinary(m *waE2E.Message) bool {
 	m = unwrap(m)
 	if m.GetImageMessage() != nil || m.GetVideoMessage() != nil || m.GetAudioMessage() != nil || m.GetDocumentMessage() != nil || m.GetStickerMessage() != nil {
 		return true
 	}
-	// ponytail: rich submessages carry text refs, not WA binary -> skip wamsg job
-	if len(richImages(m)) > 0 {
-		return true
-	}
 	dl, _ := interactiveMedia(m)
 	return dl != nil
+}
+func hasMedia(m *waE2E.Message) bool {
+	if hasWABinary(m) {
+		return true
+	}
+	// ponytail: rich submessages carry text refs, not WA binary -> skip wamsg job
+	return len(richImages(m)) > 0
 }
 func kinds(m *waE2E.Message) string {
 	if m == nil {

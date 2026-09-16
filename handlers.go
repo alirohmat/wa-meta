@@ -237,7 +237,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 			}
 		}
 	}
-	for i, u := range richImages(evt.Message) {
+	for i, u := range richImages(body) {
 		if _, dup := seenURL[u]; !dup {
 			seenURL[u] = struct{}{}
 			rid2 := evt.Info.ID + fmt.Sprintf("-%d", i)
@@ -251,7 +251,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 			}
 		}
 	}
-	for _, u := range containerRefs(evt.Message) {
+	for _, u := range containerRefs(body) {
 		if _, dup := seenURL[u]; !dup {
 			seenURL[u] = struct{}{}
 			b.addLog("info", "🖼️ media ref (tanpa binary, tidak bisa diunduh WA): "+u, map[string]any{"id": info.ID, "src": "container", "ref": u})

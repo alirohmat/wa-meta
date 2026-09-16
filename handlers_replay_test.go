@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"go.mau.fi/whatsmeow/proto/waAICommonDeprecated"
+	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -82,5 +83,39 @@ func TestHandleMessageRichURLQueuesCDN(t *testing.T) {
 	job := <-b.mediaJobs
 	if job.Kind != "cdn" || job.URL != "https://example.com/b.webp" {
 		t.Fatalf("job = %+v, want cdn https://example.com/b.webp", job)
+	}
+}
+
+// Production sends the bot reply as MESSAGE_EDIT wrapping the rich payload.
+// The container ref must still surface (unwrap before scan).
+func TestHandleMessageEditContainerRef(t *testing.T) {
+	b := testBridge()
+	inner := botMsgEvent("replay-edit", "Ini oyen:\n\n![image](container:///mnt/data/image.webp)\n\nLucu")
+	m := &events.Message{
+		Info: inner.Info,
+		Message: &waE2E.Message{
+			ProtocolMessage: &waE2E.ProtocolMessage{
+				Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+				Key:           &waCommon.MessageKey{ID: strp("replay-edit")},
+				EditedMessage: inner.Message,
+			},
+		},
+	}
+	b.handleMessage(m)
+
+	if len(b.mediaJobs) != 0 {
+		t.Fatalf("mediaJobs = %d, want 0 for edit-wrapped container ref", len(b.mediaJobs))
+	}
+	found := false
+	for _, e := range b.logs.all() {
+		if strings.Contains(e.Msg, "media ref") && strings.Contains(e.Msg, "container:///mnt/data/image.webp") {
+			found = true
+		}
+		if strings.Contains(e.Msg, "no downloadable media") {
+			t.Fatalf("unexpected skip log still present: %s", e.Msg)
+		}
+	}
+	if !found {
+		t.Fatal("want 🖼️ media ref log for edit-wrapped container:// URL, got none")
 	}
 }

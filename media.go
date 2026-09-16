@@ -126,12 +126,29 @@ func (b *bridge) downloadAndSaveWAMsg(ctx context.Context, job MediaJob) (int, s
 
 }
 
+func (b *bridge) saveTextCard(ctx context.Context, job MediaJob) (int, string, error) {
+	data := renderTextCard("Meta AI", job.MimeType, job.URL)
+	if len(data) == 0 {
+		return 0, "", fmt.Errorf("render kosong")
+	}
+	pub, err := b.saveBytesToCAS(data, ".svg", job.ChatID, job.MsgID)
+	if err != nil {
+		return 0, "", err
+	}
+	b.SetState("imgpub:"+job.ResponseID, pub, 24*time.Hour)
+	b.hook(map[string]any{"kind": "media_ready", "url": job.URL, "file": pub, "response_id": job.ResponseID, "bytes": len(data), "fallback": "text-card"})
+	b.addLog("bot", fmt.Sprintf("BOT IN %s [media CARD] %s (%d bytes) %s", job.ChatID, job.URL, len(data), pub), map[string]any{"dir": "IN", "type": "media", "text": job.URL, "media": pub, "response_id": job.ResponseID})
+	return len(data), pub, nil
+}
+
 func (b *bridge) mediaWorker() {
 	for job := range b.mediaJobs {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		var err error
 		if job.Kind == "cdn" {
 			_, _, err = b.fetchAndSaveCDN(ctx, job)
+		} else if job.Kind == "card" {
+			_, _, err = b.saveTextCard(ctx, job)
 		} else {
 			_, _, err = b.downloadAndSaveWAMsg(ctx, job)
 		}

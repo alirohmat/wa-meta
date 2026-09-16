@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"go.mau.fi/whatsmeow/proto/waAICommonDeprecated"
@@ -53,5 +54,26 @@ func TestHasMediaWABinary(t *testing.T) {
 	m := &waE2E.Message{ImageMessage: &waE2E.ImageMessage{Mimetype: strp("image/jpeg")}}
 	if !hasMedia(m) {
 		t.Fatal("hasMedia = false for ImageMessage, want true")
+	}
+}
+
+func TestRenderTextCard(t *testing.T) {
+	out := renderTextCard("Meta AI", "Halo <dunia> & semua", "container:///mnt/data/x.webp")
+	s := string(out)
+	if !strings.Contains(s, "<svg") || !strings.Contains(s, "Halo &lt;dunia&gt; &amp; semua") {
+		t.Fatalf("card missing svg or escaping: %q", s[:200])
+	}
+	if strings.Contains(s, "<dunia>") {
+		t.Fatal("card leaks unescaped HTML")
+	}
+}
+
+func TestDedupeStrings(t *testing.T) {
+	got := dedupeStrings([]string{"a", "b", "a", "c"})
+	if len(got) != 3 || got[0] != "a" || got[2] != "c" {
+		t.Fatalf("dedupeStrings = %v", got)
+	}
+	if got := dedupeStrings(nil); len(got) != 0 {
+		t.Fatalf("dedupeStrings(nil) = %v, want empty", got)
 	}
 }

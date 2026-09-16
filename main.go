@@ -657,7 +657,7 @@ func main() {
 					return nil
 				}
 				ext := strings.ToLower(filepath.Ext(d.Name()))
-				if ext != ".jpeg" && ext != ".jpg" && ext != ".png" && ext != ".webp" && ext != ".mp4" && ext != ".mov" && ext != ".webm" && ext != ".bin" {
+				if ext != ".jpeg" && ext != ".jpg" && ext != ".png" && ext != ".webp" && ext != ".svg" && ext != ".mp4" && ext != ".mov" && ext != ".webm" && ext != ".bin" {
 					return nil
 				}
 				_ = os.Remove(path)
@@ -669,7 +669,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		allowed := map[string]bool{".jpeg": true, ".jpg": true, ".png": true, ".webp": true, ".mp4": true, ".mov": true, ".webm": true, ".bin": true}
+		allowed := map[string]bool{".jpeg": true, ".jpg": true, ".png": true, ".webp": true, ".svg": true, ".mp4": true, ".mov": true, ".webm": true, ".bin": true}
 		type item struct {
 			URL string `json:"url"`
 		}

@@ -264,6 +264,12 @@ func (b *bridge) handleMessage(evt *events.Message) {
 			if _, loaded := processedImages.LoadOrStore(rid3, true); !loaded {
 				b.SetState("img:"+rid3, "1", 24*time.Hour)
 				b.addLog("info", "🖼️ media ref (tanpa binary, tidak bisa diunduh WA): "+u, map[string]any{"id": info.ID, "src": "container", "ref": u})
+				select {
+				case b.mediaJobs <- MediaJob{ResponseID: rid3, ChatID: info.Chat.String(), MsgID: info.ID, URL: u, MimeType: text, Kind: "card"}:
+				default:
+					processedImages.Delete(rid3)
+					b.addLog("warn", "media queue penuh drop "+rid3, nil)
+				}
 			}
 		}
 	}

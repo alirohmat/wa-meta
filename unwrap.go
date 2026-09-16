@@ -226,6 +226,64 @@ func dedupeStrings(in []string) []string {
 	}
 	return out
 }
+
+// renderTextCard builds a small self-contained SVG placeholder so a
+// container://-only bot reply still yields a saved, viewable media file.
+// ponytail: no image pipeline -> upgrade to real generator API later.
+func renderTextCard(title, bodyText, ref string) []byte {
+	esc := func(s string) string {
+		s = strings.ReplaceAll(s, "&", "&amp;")
+		s = strings.ReplaceAll(s, "<", "&lt;")
+		s = strings.ReplaceAll(s, ">", "&gt;")
+		s = strings.ReplaceAll(s, `"`, "&quot;")
+		return s
+	}
+	wrap := func(s string, width int) []string {
+		var lines []string
+		var cur string
+		for _, w := range strings.Fields(s) {
+			if len(cur)+len(w)+1 > width {
+				if cur != "" {
+					lines = append(lines, cur)
+				}
+				cur = w
+			} else {
+				if cur == "" {
+					cur = w
+				} else {
+					cur += " " + w
+				}
+			}
+			if len(lines) >= 11 {
+				break
+			}
+		}
+		if cur != "" && len(lines) < 12 {
+			lines = append(lines, cur)
+		}
+		return lines
+	}
+	if len(bodyText) > 600 {
+		bodyText = bodyText[:600] + "…"
+	}
+	lines := wrap(bodyText, 42)
+	var b strings.Builder
+	b.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000">`)
+	b.WriteString(`<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1a1a2e"/><stop offset="1" stop-color="#16213e"/></linearGradient></defs>`)
+	b.WriteString(`<rect width="800" height="1000" fill="url(#g)"/>`)
+	b.WriteString(`<rect x="40" y="40" width="720" height="920" rx="24" fill="none" stroke="#4fc3f7" stroke-opacity="0.4" stroke-width="2"/>`)
+	y := 130
+	b.WriteString(fmt.Sprintf(`<text x="80" y="%d" font-family="system-ui,sans-serif" font-size="34" font-weight="bold" fill="#4fc3f7">%s</text>`, y, esc(title)))
+	y += 50
+	for _, ln := range lines {
+		b.WriteString(fmt.Sprintf(`<text x="80" y="%d" font-family="system-ui,sans-serif" font-size="24" fill="#eeeeee">%s</text>`, y, esc(ln)))
+		y += 38
+	}
+	y += 30
+	b.WriteString(fmt.Sprintf(`<text x="80" y="%d" font-family="monospace" font-size="16" fill="#888888">ref: %s</text>`, 920, esc(ref)))
+	b.WriteString(`</svg>`)
+	return []byte(b.String())
+}
 func containerRefs(m *waE2E.Message) []string {
 	t := richText(unwrap(m))
 	if t == "" {

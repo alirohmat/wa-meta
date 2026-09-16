@@ -41,15 +41,19 @@ func botMsgEvent(id, text string) *events.Message {
 }
 
 // Replay of the production failure: bot sends rich:1sub text with a
-// container:// ref. Old code queued a wamsg job that died with
-// "no downloadable media"; new code must queue nothing and log the ref.
+// container:// ref. No WA binary exists, so the handler queues a text-card
+// fallback job (rendered SVG) instead of a doomed wamsg download.
 func TestHandleMessageContainerRefNoJob(t *testing.T) {
 	b := testBridge()
 	text := "Here is your scene 1:\n\n![image](container:///mnt/data/medina_dawn.webp)\n\nCourtyard at dawn"
 	b.handleMessage(botMsgEvent("replay-1", text))
 
-	if len(b.mediaJobs) != 0 {
-		t.Fatalf("mediaJobs = %d, want 0 (no WA binary to download)", len(b.mediaJobs))
+	if len(b.mediaJobs) != 1 {
+		t.Fatalf("mediaJobs = %d, want 1 text-card fallback job", len(b.mediaJobs))
+	}
+	job := <-b.mediaJobs
+	if job.Kind != "card" || job.URL != "container:///mnt/data/medina_dawn.webp" {
+		t.Fatalf("job = %+v, want card container:///mnt/data/medina_dawn.webp", job)
 	}
 	found := false
 	for _, e := range b.logs.all() {
@@ -103,8 +107,12 @@ func TestHandleMessageEditContainerRef(t *testing.T) {
 	}
 	b.handleMessage(m)
 
-	if len(b.mediaJobs) != 0 {
-		t.Fatalf("mediaJobs = %d, want 0 for edit-wrapped container ref", len(b.mediaJobs))
+	if len(b.mediaJobs) != 1 {
+		t.Fatalf("mediaJobs = %d, want 1 card job for edit-wrapped container ref", len(b.mediaJobs))
+	}
+	job := <-b.mediaJobs
+	if job.Kind != "card" {
+		t.Fatalf("job.Kind = %s, want card", job.Kind)
 	}
 	found := false
 	for _, e := range b.logs.all() {

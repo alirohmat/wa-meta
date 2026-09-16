@@ -239,6 +239,12 @@ func (b *bridge) handleMessage(evt *events.Message) {
 			}
 		}
 	}
+	for _, u := range containerRefs(evt.Message) {
+		if _, dup := seenURL[u]; !dup {
+			seenURL[u] = struct{}{}
+			b.addLog("info", "🖼️ media ref (tanpa binary, tidak bisa diunduh WA): "+u, map[string]any{"id": info.ID, "src": "container", "ref": u})
+		}
+	}
 	if text == "" && len(files) == 0 && typ == "other" {
 		if evt.Message.GetProtocolMessage() == nil && richDump(evt.Message) == "" {
 			return

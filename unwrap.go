@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"go.mau.fi/whatsmeow"
@@ -10,6 +11,8 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"google.golang.org/protobuf/proto"
 )
+
+var containerURL = regexp.MustCompile(`container://[^\s\)\]]+`)
 
 func unwrap(m *waE2E.Message) *waE2E.Message {
 	for m != nil {
@@ -208,12 +211,30 @@ func extractTextFull(m *waE2E.Message, fallbackID string) (string, string) {
 	}
 	return id, ""
 }
+func containerRefs(m *waE2E.Message) []string {
+	t := richText(unwrap(m))
+	if t == "" {
+		return nil
+	}
+	found := containerURL.FindAllString(t, -1)
+	seen := map[string]struct{}{}
+	var out []string
+	for _, u := range found {
+		if _, dup := seen[u]; dup {
+			continue
+		}
+		seen[u] = struct{}{}
+		out = append(out, u)
+	}
+	return out
+}
 func hasMedia(m *waE2E.Message) bool {
 	m = unwrap(m)
 	if m.GetImageMessage() != nil || m.GetVideoMessage() != nil || m.GetAudioMessage() != nil || m.GetDocumentMessage() != nil || m.GetStickerMessage() != nil {
 		return true
 	}
-	if m.GetRichResponseMessage() != nil {
+	// ponytail: rich submessages carry text refs, not WA binary -> skip wamsg job
+	if len(richImages(m)) > 0 {
 		return true
 	}
 	dl, _ := interactiveMedia(m)

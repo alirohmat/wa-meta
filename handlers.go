@@ -251,10 +251,20 @@ func (b *bridge) handleMessage(evt *events.Message) {
 			}
 		}
 	}
+	editKey := info.ID
+	if pm := evt.Message.GetProtocolMessage(); pm != nil && pm.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {
+		if k := pm.GetKey().GetID(); k != "" {
+			editKey = k
+		}
+	}
 	for _, u := range containerRefs(body) {
 		if _, dup := seenURL[u]; !dup {
 			seenURL[u] = struct{}{}
-			b.addLog("info", "🖼️ media ref (tanpa binary, tidak bisa diunduh WA): "+u, map[string]any{"id": info.ID, "src": "container", "ref": u})
+			rid3 := "container:" + editKey + ":" + u
+			if _, loaded := processedImages.LoadOrStore(rid3, true); !loaded {
+				b.SetState("img:"+rid3, "1", 24*time.Hour)
+				b.addLog("info", "🖼️ media ref (tanpa binary, tidak bisa diunduh WA): "+u, map[string]any{"id": info.ID, "src": "container", "ref": u})
+			}
 		}
 	}
 	if text == "" && len(files) == 0 && typ == "other" {

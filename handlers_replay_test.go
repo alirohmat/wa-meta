@@ -119,3 +119,33 @@ func TestHandleMessageEditContainerRef(t *testing.T) {
 		t.Fatal("want 🖼️ media ref log for edit-wrapped container:// URL, got none")
 	}
 }
+
+// Three streaming edits for the same original message must log the
+// container ref only once (dedupe by edit key), not once per edit.
+func TestHandleMessageEditContainerRefDeduped(t *testing.T) {
+	b := testBridge()
+	pad := strings.Repeat("x", 60)
+	for i := 0; i < 3; i++ {
+		inner := botMsgEvent("replay-dedup-outer", "Oyen part "+string(rune('A'+i))+" "+pad+"\n\n![image](container:///mnt/data/image.webp)\n\n"+pad)
+		m := &events.Message{
+			Info: inner.Info,
+			Message: &waE2E.Message{
+				ProtocolMessage: &waE2E.ProtocolMessage{
+					Type:          waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(),
+					Key:           &waCommon.MessageKey{ID: strp("replay-dedup")},
+					EditedMessage: inner.Message,
+				},
+			},
+		}
+		b.handleMessage(m)
+	}
+	n := 0
+	for _, e := range b.logs.all() {
+		if strings.Contains(e.Msg, "media ref") && strings.Contains(e.Msg, "container:///mnt/data/image.webp") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("media ref logs = %d, want exactly 1 across 3 streaming edits", n)
+	}
+}

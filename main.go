@@ -146,6 +146,7 @@ func main() {
 		b.stateDB = rawDB
 		_ = setupStateTable(b.stateDB)
 		_ = setupTelemetryTable(b.stateDB)
+		_ = setupMediaTable(b.stateDB)
 	}
 	b.mediaJobs = make(chan MediaJob, 64)
 	b.stateWriteCh = make(chan stateWriteJob, 256)
@@ -674,6 +675,7 @@ func main() {
 			URL string `json:"url"`
 		}
 		out := []item{}
+		seen := map[string]bool{}
 		_ = filepath.WalkDir(mediaDir, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return nil
@@ -684,13 +686,54 @@ func main() {
 			}
 			rel, _ := filepath.Rel(mediaDir, path)
 			rel = filepath.ToSlash(rel)
-			out = append(out, item{URL: publicPrefix + "/" + rel})
+			u := publicPrefix + "/" + rel
+			seen[u] = true
+			out = append(out, item{URL: u})
 			return nil
 		})
+		for _, he := range b.listBlobHashes(100) {
+			h, e := he[0], he[1]
+			if len(h) < 4 || !allowed[strings.ToLower(e)] {
+				continue
+			}
+			u := publicPrefix + "/" + h[0:2] + "/" + h[2:4] + "/" + h + strings.ToLower(e)
+			if !seen[u] {
+				seen[u] = true
+				out = append(out, item{URL: u})
+			}
+		}
 		sort.Slice(out, func(i, j int) bool { return out[i].URL > out[j].URL })
 		json.NewEncoder(w).Encode(out)
 	})
-	mux.Handle(publicPrefix+"/", http.StripPrefix(publicPrefix+"/", http.FileServer(http.Dir(mediaDir))))
+	mux.HandleFunc(publicPrefix+"/", func(w http.ResponseWriter, r *http.Request) {
+		rel := strings.TrimPrefix(r.URL.Path, publicPrefix+"/")
+		rel = filepath.ToSlash(filepath.Clean(filepath.FromSlash(rel)))
+		fp := filepath.Join(mediaDir, filepath.FromSlash(rel))
+		absMedia, _ := filepath.Abs(mediaDir)
+		absFp, _ := filepath.Abs(fp)
+		if absFp != absMedia && !strings.HasPrefix(absFp, absMedia+string(os.PathSeparator)) {
+			w.WriteHeader(400)
+			return
+		}
+		if st, err := os.Stat(fp); err == nil && !st.IsDir() {
+			http.ServeFile(w, r, fp)
+			return
+		}
+		base := filepath.Base(rel)
+		hash := strings.TrimSuffix(base, filepath.Ext(base))
+		if len(hash) >= 4 {
+			if data, ext := b.loadBlobFromDB(hash); len(data) > 0 {
+				_ = os.MkdirAll(filepath.Dir(fp), 0755)
+				_ = os.WriteFile(fp, data, 0644)
+				if ct := mimeByExt(ext); ct != "" {
+					w.Header().Set("Content-Type", ct)
+				}
+				_, _ = w.Write(data)
+				return
+			}
+		}
+		w.WriteHeader(404)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		io.WriteString(w, page)

@@ -84,6 +84,27 @@ func parseBot(s string, def types.JID) types.JID {
 }
 func isBotJID(j types.JID) bool { return j.Server == "bot" }
 
+func mimeByExt(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".svg":
+		return "image/svg+xml"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".mp4":
+		return "video/mp4"
+	case ".mov":
+		return "video/quicktime"
+	case ".webm":
+		return "video/webm"
+	default:
+		return ""
+	}
+}
+
 func getExtension(mimeType string) string {
 	switch mimeType {
 	case "image/jpeg":

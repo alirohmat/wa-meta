@@ -77,3 +77,32 @@ func TestDedupeStrings(t *testing.T) {
 		t.Fatalf("dedupeStrings(nil) = %v, want empty", got)
 	}
 }
+
+func TestPollinationsURL(t *testing.T) {
+	u := pollinationsURL("kucing oranye", 768, 768, 42)
+	if !strings.Contains(u, "image.pollinations.ai/prompt/") || !strings.Contains(u, "seed=42") || !strings.Contains(u, "nologo=true") {
+		t.Fatalf("pollinationsURL = %s", u)
+	}
+}
+
+func TestDetectImageExt(t *testing.T) {
+	if got := detectImageExt([]byte{0xFF, 0xD8, 0xFF, 0x00}, ""); got != ".jpg" {
+		t.Fatalf("jpeg = %s", got)
+	}
+	png := []byte{0x89, 'P', 'N', 'G', 0, 0, 0, 0}
+	if got := detectImageExt(png, ""); got != ".png" {
+		t.Fatalf("png = %s", got)
+	}
+	if got := detectImageExt([]byte("xx"), "image/webp"); got != ".webp" {
+		t.Fatalf("webp ct = %s", got)
+	}
+}
+
+func TestWantsImage(t *testing.T) {
+	if !wantsImage("buatkan gambar kucing") {
+		t.Fatal("want true for gambar prompt")
+	}
+	if wantsImage("berapa jam sekarang?") {
+		t.Fatal("want false for plain question")
+	}
+}

@@ -17,6 +17,7 @@ import (
 
 var cdnURL = regexp.MustCompile(`https?://[^ ]+?[.](?:jpg|jpeg|png|webp|mp4|mov|webm)(?:[?][^ ]*)?`)
 var cdnRegex = cdnURL
+var fbCDNURL = regexp.MustCompile(`https?://[^ ]*?(?:fbcdn\.net|scontent[^ ]*\.fbcdn|scontent\.xx\.fbcdn\.net|lookaside\.fbsbx\.com|cdn\.fbcdn|graph\.facebook\.com)[^ ]*`)
 var processedImages sync.Map
 var lastBotText sync.Map
 

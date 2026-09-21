@@ -69,14 +69,22 @@ func (b *bridge) handleMessage(evt *events.Message) {
 	}
 	rawBytes, mErr := proto.Marshal(evt.Message)
 	if mErr == nil {
-		for i, u := range cdnURL.FindAllString(string(rawBytes), -1) {
+		rawStr := string(rawBytes)
+		for i, u := range cdnURL.FindAllString(rawStr, -1) {
 			queueCDN(u, "raw", i)
+		}
+		// hunt FB CDN (scontent/lookaside) that may not have .jpg suffix
+		for i, u := range fbCDNURL.FindAllString(rawStr, -1) {
+			queueCDN(u, "fb-raw", i)
 		}
 	}
 	dump := richDump(evt.Message)
 	if dump != "" {
 		for i, u := range cdnURL.FindAllString(dump, -1) {
 			queueCDN(u, "dump", i)
+		}
+		for i, u := range fbCDNURL.FindAllString(dump, -1) {
+			queueCDN(u, "fb-dump", i)
 		}
 	}
 	if pm := evt.Message.GetProtocolMessage(); pm != nil && pm.GetType() == waE2E.ProtocolMessage_MESSAGE_EDIT {

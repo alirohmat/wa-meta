@@ -115,17 +115,41 @@ func richImages(m *waE2E.Message) []string {
 func richDump(m *waE2E.Message) string {
 	rr := unwrap(m).GetRichResponseMessage()
 	if rr == nil {
-		return ""
+		// for container:// msgs the richResponse is inside the edited envelope — try resolveEdit
+		m2 := resolveEdit(m)
+		if m2 != m {
+			rr = m2.GetRichResponseMessage()
+		}
+		if rr == nil {
+			// dump raw message bytes as fallback (hunt FB CDN in raw)
+			if bb, err := proto.Marshal(m); err == nil && len(bb) > 0 {
+				if len(bb) > 8000 {
+					bb = bb[:8000]
+				}
+				var b strings.Builder
+				b.WriteString("raw[")
+				b.WriteString(hex.EncodeToString(bb))
+				b.WriteString("] txt[")
+				b.WriteString(printable(bb))
+				b.WriteString("]")
+				return b.String()
+			}
+			return ""
+		}
 	}
 	var b strings.Builder
-	if d := rr.GetUnifiedResponse().GetData(); len(d) > 0 {
-		if len(d) > 2048 {
-			d = d[:2048]
+	d := rr.GetUnifiedResponse().GetData()
+	if len(d) > 0 {
+		if len(d) > 8000 {
+			d = d[:8000]
 		}
 		b.WriteString("unified[")
 		b.WriteString(hex.EncodeToString(d))
 		b.WriteString("] txt[")
 		b.WriteString(printable(d))
+		b.WriteString("] json[")
+		// try pretty json for hunting FB CDN url inside unifiedResponse
+		b.WriteString(clipStr(printable(d), 3000))
 		b.WriteString("]")
 	}
 	for i, sm := range rr.GetSubmessages() {
@@ -133,8 +157,8 @@ func richDump(m *waE2E.Message) string {
 			break
 		}
 		bb, _ := proto.Marshal(sm)
-		if len(bb) > 1024 {
-			bb = bb[:1024]
+		if len(bb) > 4096 {
+			bb = bb[:4096]
 		}
 		b.WriteString(" sub[")
 		b.WriteString(hex.EncodeToString(bb))
@@ -142,7 +166,23 @@ func richDump(m *waE2E.Message) string {
 		b.WriteString(printable(bb))
 		b.WriteString("]")
 	}
+	// also append raw envelope for hunting
+	if bb, err := proto.Marshal(m); err == nil && len(bb) > 0 {
+		if len(bb) > 4000 {
+			bb = bb[:4000]
+		}
+		b.WriteString(" envelope_txt[")
+		b.WriteString(clipStr(printable(bb), 1500))
+		b.WriteString("]")
+	}
 	return b.String()
+}
+
+func clipStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 func printable(d []byte) string {
 	var b strings.Builder

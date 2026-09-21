@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -125,87 +124,6 @@ func (b *bridge) downloadAndSaveWAMsg(ctx context.Context, job MediaJob) (int, s
 	b.addLog("bot", fmt.Sprintf("BOT %s %s [media] (%d bytes) %s", "OUT", job.ChatID, len(data), pub), map[string]any{"dir": "OUT", "media": pub, "chat": job.ChatID, "id": job.MsgID})
 	return len(data), pub, nil
 
-}
-
-func wantsImage(prompt string) bool {
-	s := strings.ToLower(prompt)
-	for _, k := range []string{"gambar", "image", "foto", "photo", "picture", "lukis", "draw", "buatkan", "buatin", "generate image", "sketsa"} {
-		if strings.Contains(s, k) {
-			return true
-		}
-	}
-	return false
-}
-
-func pollinationsURL(prompt string, width, height, seed int) string {
-	if width <= 0 {
-		width = 768
-	}
-	if height <= 0 {
-		height = 768
-	}
-	q := url.QueryEscape(strings.TrimSpace(prompt))
-	if q == "" {
-		q = "random"
-	}
-	return fmt.Sprintf("https://image.pollinations.ai/prompt/%s?width=%d&height=%d&seed=%d&nologo=true", q, width, height, seed)
-}
-
-func detectImageExt(data []byte, contentType string) string {
-	ct := strings.ToLower(contentType)
-	switch {
-	case strings.Contains(ct, "png"):
-		return ".png"
-	case strings.Contains(ct, "webp"):
-		return ".webp"
-	case strings.Contains(ct, "gif"):
-		return ".gif"
-	}
-	if len(data) >= 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G' {
-		return ".png"
-	}
-	if len(data) >= 12 && string(data[8:12]) == "WEBP" {
-		return ".webp"
-	}
-	if len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
-		return ".jpg"
-	}
-	return ".jpg"
-}
-
-func (b *bridge) fetchPollinations(ctx context.Context, prompt, chatID, msgID string) (string, int, error) {
-	seed := int(time.Now().UnixNano() % 1000000)
-	u := pollinationsURL(prompt, 768, 768, seed)
-	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
-	if err != nil {
-		return "", 0, err
-	}
-	req.Header.Set("User-Agent", "wabot/1.0")
-	req.Header.Set("Accept", "image/*")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", 0, fmt.Errorf("pollinations status %d", resp.StatusCode)
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 15<<20))
-	if err != nil {
-		return "", 0, err
-	}
-	if len(data) < 1024 {
-		return "", 0, fmt.Errorf("pollinations body too small: %d", len(data))
-	}
-	ext := detectImageExt(data, resp.Header.Get("Content-Type"))
-	pub, err := b.saveBytesToCAS(data, ext, chatID, msgID)
-	if err != nil {
-		return "", 0, err
-	}
-	b.SetState("imgpub:pollinations:"+msgID, pub, 24*time.Hour)
-	b.hook(map[string]any{"kind": "media_ready", "url": u, "file": pub, "response_id": "pollinations:" + msgID, "bytes": len(data), "source": "pollinations"})
-	b.addLog("bot", fmt.Sprintf("BOT IN %s [media POLLINATIONS] %s (%d bytes) %s", chatID, u, len(data), pub), map[string]any{"dir": "IN", "type": "media", "text": u, "media": pub, "response_id": "pollinations:" + msgID, "source": "pollinations"})
-	return pub, len(data), nil
 }
 
 func (b *bridge) saveTextCard(ctx context.Context, job MediaJob) (int, string, error) {

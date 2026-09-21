@@ -312,9 +312,6 @@ func main() {
 			Prompt  string `json:"prompt"`
 			To      string `json:"to"`
 			Timeout int    `json:"timeout"`
-			Image   *bool  `json:"image"`
-			Width   int    `json:"width"`
-			Height  int    `json:"height"`
 		}
 		body, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(body, &in)
@@ -353,30 +350,7 @@ func main() {
 			existing[p] = true
 			return nil
 		})
-		// Real footage: fetch Pollinations in parallel (WA container:// refs carry no bytes).
-		// Default ON for image-intent prompts; pass "image": false to skip, "image": true to force.
-		// WA bot reply still polled below as text.
-		wantImage := wantsImage(txt)
-		if in.Image != nil {
-			wantImage = *in.Image
-		}
-		type imgRes struct {
-			pub   string
-			bytes int
-			err   error
-		}
-		imgCh := make(chan imgRes, 1)
-		genMsgID := fmt.Sprintf("gen-%d", sentAt.UnixNano())
-		if wantImage {
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-				defer cancel()
-				pub, n, err := b.fetchPollinations(ctx, txt, to.String(), genMsgID)
-				imgCh <- imgRes{pub, n, err}
-			}()
-		} else {
-			go func() { imgCh <- imgRes{} }()
-		}
+
 		ctx2, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		_, err := b.client.SendMessage(ctx2, to, &waE2E.Message{Conversation: &txt})
 		cancel()
@@ -482,12 +456,6 @@ func main() {
 					}
 					return nil
 				})
-				img := <-imgCh
-				imgErr := ""
-				if img.err != nil {
-					imgErr = img.err.Error()
-					b.addLog("warn", "pollinations gagal: "+imgErr, nil)
-				}
 				sort.Strings(newMedia)
 				scheme := "https"
 				if r.TLS == nil {
@@ -515,7 +483,7 @@ func main() {
 					}
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "image": img.pub, "image_bytes": img.bytes, "image_error": imgErr, "container_refs": dedupeStrings(containerURL.FindAllString(reply, -1)), "elapsed_ms": time.Since(sentAt).Milliseconds()})
+				json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "container_refs": dedupeStrings(containerURL.FindAllString(reply, -1)), "elapsed_ms": time.Since(sentAt).Milliseconds()})
 				return
 			}
 			if time.Now().After(deadline) {
@@ -552,13 +520,7 @@ func main() {
 			return nil
 		})
 		sort.Strings(newMedia)
-		img := <-imgCh
-		imgErr := ""
-		if img.err != nil {
-			imgErr = img.err.Error()
-			b.addLog("warn", "pollinations gagal: "+imgErr, nil)
-		}
-		if reply == "" && len(newMedia) == 0 && img.pub == "" {
+		if reply == "" && len(newMedia) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(504)
 			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "timeout menunggu balasan bot", "hint": "coba lagi atau cek GET /api/logs dan GET /api/media", "elapsed_ms": time.Since(sentAt).Milliseconds()})
@@ -580,7 +542,7 @@ func main() {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "image": img.pub, "image_bytes": img.bytes, "image_error": imgErr, "container_refs": dedupeStrings(containerURL.FindAllString(reply, -1)), "elapsed_ms": time.Since(sentAt).Milliseconds()})
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "container_refs": dedupeStrings(containerURL.FindAllString(reply, -1)), "elapsed_ms": time.Since(sentAt).Milliseconds()})
 	}))
 	mux.HandleFunc("/api/logout", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		b.pm.Lock()

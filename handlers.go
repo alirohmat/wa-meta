@@ -54,6 +54,11 @@ func (b *bridge) handleMessage(evt *events.Message) {
 			return
 		}
 		seenURL[u] = struct{}{}
+		// global dedupe across edits (same mmg url sent in multiple MESSAGE_EDIT)
+		if _, loaded := processedImages.LoadOrStore("url:"+u, true); loaded {
+			return
+		}
+		b.SetState("url:"+u, "1", 24*time.Hour)
 		b.addLog("info", "🎯 URL CDN "+src+": "+u, map[string]any{"id": info.ID, "src": src})
 		rid := fmt.Sprintf("%s-%s-%d", info.ID, src, i)
 		if _, loaded := processedImages.LoadOrStore(rid, true); loaded {
@@ -124,6 +129,10 @@ func (b *bridge) handleMessage(evt *events.Message) {
 														if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
 															if _, dup := seenURL[urlStr]; !dup {
 																seenURL[urlStr] = struct{}{}
+																if _, loaded := processedImages.LoadOrStore("url:"+urlStr, true); loaded {
+																	continue
+																}
+																b.SetState("url:"+urlStr, "1", 24*time.Hour)
 																mimeType, _ := mediaMap["mime_type"].(string)
 																b.addLog("info", "🎯 MEDIA READY (queue): "+urlStr, map[string]any{"id": info.ID, "response_id": responseID, "mime": mimeType})
 																select {

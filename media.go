@@ -51,17 +51,26 @@ func (b *bridge) fetchAndSaveCDN(ctx context.Context, job MediaJob) (int, string
 	}
 	ext := ".jpg"
 	mt := strings.ToLower(job.MimeType)
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
 	switch {
-	case strings.Contains(mt, "png"):
+	case strings.Contains(mt, "png") || strings.Contains(ct, "png"):
 		ext = ".png"
-	case strings.Contains(mt, "webp"):
+	case strings.Contains(mt, "webp") || strings.Contains(ct, "webp"):
 		ext = ".webp"
-	case strings.Contains(mt, "mp4"):
+	case strings.Contains(mt, "mp4") || strings.Contains(ct, "mp4"):
 		ext = ".mp4"
-	case strings.Contains(mt, "mov"):
+	case strings.Contains(mt, "mov") || strings.Contains(ct, "mov"):
 		ext = ".mov"
-	case strings.Contains(mt, "jpeg"), strings.Contains(mt, "jpg"):
+	case strings.Contains(mt, "jpeg"), strings.Contains(mt, "jpg"), strings.Contains(ct, "jpeg"), strings.Contains(ct, "jpg"):
 		ext = ".jpg"
+	}
+	// fallback sniff magic (mmg .enc is actually WEBP without mime)
+	if ext == ".jpg" {
+		if len(data) >= 12 && string(data[8:12]) == "WEBP" {
+			ext = ".webp"
+		} else if len(data) >= 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G' {
+			ext = ".png"
+		}
 	}
 	pub, err := b.saveBytesToCAS(data, ext, job.ChatID, job.MsgID)
 	if err != nil {

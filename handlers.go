@@ -119,7 +119,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 												statusStr, _ = st["status"].(string)
 											}
 											if statusStr == "" || statusStr == "READY" {
-												// dedupe per-URL instead of per-responseID (allow Thinking->READY updates)
+												// dedupe per-URL (allow Thinking->READY)
 												if mediaMap, ok := prim["media"].(map[string]any); ok {
 														if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
 															if _, dup := seenURL[urlStr]; !dup {
@@ -159,10 +159,10 @@ func (b *bridge) handleMessage(evt *events.Message) {
 															}
 														}
 													}
-												}
 											}
 										}
 									}
+								}
 							}
 						}
 					}

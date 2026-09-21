@@ -15,9 +15,10 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 )
 
-var cdnURL = regexp.MustCompile(`https?://[^ ]+?[.](?:jpg|jpeg|png|webp|mp4|mov|webm)(?:[?][^ ]*)?`)
+var cdnURL = regexp.MustCompile(`https?://[^ ]+?[.](?:jpg|jpeg|png|webp|mp4|mov|webm|enc)(?:[?][^ ]*)?`)
 var cdnRegex = cdnURL
 var fbCDNURL = regexp.MustCompile(`https?://[^ ]*?(?:fbcdn\.net|scontent[^ ]*\.fbcdn|scontent\.xx\.fbcdn\.net|lookaside\.fbsbx\.com|cdn\.fbcdn|graph\.facebook\.com)[^ ]*`)
+var mmgURL = regexp.MustCompile(`https?://mmg\.whatsapp\.net[^ ]+`)
 var processedImages sync.Map
 var lastBotText sync.Map
 

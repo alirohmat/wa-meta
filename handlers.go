@@ -70,6 +70,9 @@ func (b *bridge) handleMessage(evt *events.Message) {
 	rawBytes, mErr := proto.Marshal(evt.Message)
 	if mErr == nil {
 		rawStr := string(rawBytes)
+		for i, u := range mmgURL.FindAllString(rawStr, -1) {
+			queueCDN(u, "mmg-raw", i)
+		}
 		for i, u := range cdnURL.FindAllString(rawStr, -1) {
 			queueCDN(u, "raw", i)
 		}
@@ -80,6 +83,9 @@ func (b *bridge) handleMessage(evt *events.Message) {
 	}
 	dump := richDump(evt.Message)
 	if dump != "" {
+		for i, u := range mmgURL.FindAllString(dump, -1) {
+			queueCDN(u, "mmg-dump", i)
+		}
 		for i, u := range cdnURL.FindAllString(dump, -1) {
 			queueCDN(u, "dump", i)
 		}
@@ -113,10 +119,9 @@ func (b *bridge) handleMessage(evt *events.Message) {
 												statusStr, _ = st["status"].(string)
 											}
 											if statusStr == "" || statusStr == "READY" {
-												if _, loaded := processedImages.LoadOrStore(responseID, true); loaded {
-												} else {
-													b.SetState("img:"+responseID, "1", 24*time.Hour)
-													if mediaMap, ok := prim["media"].(map[string]any); ok {
+												// allow multiple edits for same response_id (Thinking -> Generating -> READY)
+												// dedupe per URL, not per response_id, so READY media is not skipped
+												if mediaMap, ok := prim["media"].(map[string]any); ok {
 														if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
 															if _, dup := seenURL[urlStr]; !dup {
 																seenURL[urlStr] = struct{}{}

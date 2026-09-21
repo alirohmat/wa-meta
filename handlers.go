@@ -316,10 +316,50 @@ func (b *bridge) handle(raw any) {
 	case *events.Disconnected:
 		b.addLog("warn", "WA disconnected", nil)
 		b.setConn(false)
+	case *events.StreamReplaced:
+		b.addLog("warn", "WA stream replaced (conflict type=replaced) — sesi kegeser device/instance lain, auto-reconnect 3s", nil)
+		b.setConn(false)
+		go func() {
+			time.Sleep(3 * time.Second)
+			if b.client.Store.ID == nil {
+				return
+			}
+			if b.client.IsConnected() {
+				return
+			}
+			b.addLog("info", "reconnect setelah StreamReplaced...", nil)
+			if err := b.client.Connect(); err != nil {
+				b.addLog("warn", "reconnect StreamReplaced gagal: "+err.Error(), nil)
+			} else {
+				b.addLog("info", "reconnect StreamReplaced OK", nil)
+			}
+		}()
+	case *events.ConnectFailure:
+		b.addLog("warn", fmt.Sprintf("WA connect failure reason=%v msg=%s", evt.Reason, evt.Message), nil)
+		b.setConn(false)
+	case *events.TemporaryBan:
+		b.addLog("warn", fmt.Sprintf("WA temporary ban code=%v expire=%v", evt.Code, evt.Expire), nil)
+		b.setConn(false)
+	case *events.ClientOutdated:
+		b.addLog("warn", "WA client outdated — update whatsmeow", nil)
+		b.setConn(false)
 	case *events.LoggedOut:
 		b.addLog("warn", "WA logged out", nil)
 		b.setConn(false)
+	case *events.KeepAliveTimeout:
+		b.addLog("warn", fmt.Sprintf("WA keepalive timeout count=%d last=%v", evt.ErrorCount, evt.LastSuccess), nil)
+	case *events.KeepAliveRestored:
+		b.addLog("info", "WA keepalive restored", nil)
 	case *events.Message:
 		b.handleMessage(evt)
+	default:
+		// dump unknown permanent disconnects for debug
+		if dl := strings.ToUpper(envStr("LOG_LEVEL", "DEBUG")); dl == "DEBUG" || dl == "" {
+			// only log types that look like disconnect
+			t := fmt.Sprintf("%T", raw)
+			if strings.Contains(t, "Disconnect") || strings.Contains(t, "Replaced") || strings.Contains(t, "Failure") || strings.Contains(t, "Ban") || strings.Contains(t, "Error") {
+				b.addLog("debug", fmt.Sprintf("WA evt %T %v", raw, raw), nil)
+			}
+		}
 	}
 }

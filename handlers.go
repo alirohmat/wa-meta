@@ -119,8 +119,7 @@ func (b *bridge) handleMessage(evt *events.Message) {
 												statusStr, _ = st["status"].(string)
 											}
 											if statusStr == "" || statusStr == "READY" {
-												// allow multiple edits for same response_id (Thinking -> Generating -> READY)
-												// dedupe per URL, not per response_id, so READY media is not skipped
+												// dedupe per-URL instead of per-responseID (allow Thinking->READY updates)
 												if mediaMap, ok := prim["media"].(map[string]any); ok {
 														if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
 															if _, dup := seenURL[urlStr]; !dup {
@@ -164,7 +163,6 @@ func (b *bridge) handleMessage(evt *events.Message) {
 											}
 										}
 									}
-								}
 							}
 						}
 					}

@@ -131,7 +131,7 @@ func main() {
 	ctx := context.Background()
 	os.MkdirAll(mediaDir, 0755)
 	driver, dsn := getDSN()
-	container, err := sqlstore.New(ctx, driver, dsn, waLog.Stdout("db", "WARN", true))
+	container, err := sqlstore.New(ctx, driver, dsn, waLog.Stdout("db", envStr("LOG_LEVEL", "DEBUG"), true))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	client := whatsmeow.NewClient(device, waLog.Stdout("wa", "INFO", true))
+	client := whatsmeow.NewClient(device, waLog.Stdout("wa", envStr("LOG_LEVEL", "DEBUG"), true))
 	b := &bridge{client: client, container: container, logs: &logStore{}}
 	rawDB, _ := sql.Open(driver, dsn)
 	if rawDB != nil {

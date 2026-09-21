@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -38,6 +39,14 @@ func (b *bridge) handleMessage(evt *events.Message) {
 	}
 	if !isBot {
 		return
+	}
+	if dl := strings.ToUpper(envStr("LOG_LEVEL", "DEBUG")); dl == "DEBUG" || dl == "" {
+		// verbose raw dump for Koyeb platform logs + /api/logs
+		rd := richDump(evt.Message)
+		pf := protoFields(evt.Message)
+		b.addLog("debug", fmt.Sprintf("RAW id=%s chat=%s sender=%s fields=%s dump=%s", info.ID, info.Chat.String(), info.Sender.String(), pf, clip(rd, 2000)), map[string]any{"id": info.ID, "chat": info.Chat.String(), "sender": info.Sender.String(), "fields": pf, "dump": clip(rd, 2000)})
+		// also mirror to stdout so Koyeb infra logs show it (whatsmeow logger is separate)
+		fmt.Fprintln(os.Stderr, "[DEBUG RAW] id="+info.ID+" chat="+info.Chat.String()+" fields="+pf+" dump="+clip(rd, 2000))
 	}
 	seenURL := make(map[string]struct{})
 	queueCDN := func(u, src string, i int) {
@@ -297,6 +306,9 @@ func (b *bridge) handleMessage(evt *events.Message) {
 }
 
 func (b *bridge) handle(raw any) {
+	if dl := strings.ToUpper(envStr("LOG_LEVEL", "DEBUG")); dl == "DEBUG" || dl == "" {
+		fmt.Fprintf(os.Stderr, "[DEBUG EVT] %T %v\n", raw, raw)
+	}
 	switch evt := raw.(type) {
 	case *events.Connected:
 		b.addLog("info", "WA connected", nil)

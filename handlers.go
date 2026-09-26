@@ -126,33 +126,20 @@ func (b *bridge) handleMessage(evt *events.Message) {
 											if statusStr == "" || statusStr == "READY" {
 												// dedupe per-URL (allow Thinking->READY)
 												if mediaMap, ok := prim["media"].(map[string]any); ok {
-														if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
-															if _, dup := seenURL[urlStr]; !dup {
-																seenURL[urlStr] = struct{}{}
-																if _, loaded := processedImages.LoadOrStore("url:"+urlStr, true); loaded {
-																	continue
-																}
-																b.SetState("url:"+urlStr, "1", 24*time.Hour)
-																mimeType, _ := mediaMap["mime_type"].(string)
-																b.addLog("info", "🎯 MEDIA READY (queue): "+urlStr, map[string]any{"id": info.ID, "response_id": responseID, "mime": mimeType})
-																select {
-																case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: urlStr, MimeType: mimeType, Kind: "cdn"}:
-																default:
-																	processedImages.Delete(responseID)
-																	b.addLog("warn", "media queue penuh drop "+responseID, nil)
-																}
+													if urlStr, ok := mediaMap["url"].(string); ok && urlStr != "" {
+														if _, dup := seenURL[urlStr]; !dup {
+															seenURL[urlStr] = struct{}{}
+															if _, loaded := processedImages.LoadOrStore("url:"+urlStr, true); loaded {
+																continue
 															}
-														} else {
-															raw, _ := json.Marshal(prim)
-															if u2, err2 := b.extractCDNURL(string(raw), info.Chat.String()); err2 == nil && u2 != "" {
-																if _, dup := seenURL[u2]; !dup {
-																	seenURL[u2] = struct{}{}
-																	select {
-																	case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
-																	default:
-																		processedImages.Delete(responseID)
-																	}
-																}
+															b.SetState("url:"+urlStr, "1", 24*time.Hour)
+															mimeType, _ := mediaMap["mime_type"].(string)
+															b.addLog("info", "🎯 MEDIA READY (queue): "+urlStr, map[string]any{"id": info.ID, "response_id": responseID, "mime": mimeType})
+															select {
+															case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: urlStr, MimeType: mimeType, Kind: "cdn"}:
+															default:
+																processedImages.Delete(responseID)
+																b.addLog("warn", "media queue penuh drop "+responseID, nil)
 															}
 														}
 													} else {
@@ -168,6 +155,19 @@ func (b *bridge) handleMessage(evt *events.Message) {
 															}
 														}
 													}
+												} else {
+													raw, _ := json.Marshal(prim)
+													if u2, err2 := b.extractCDNURL(string(raw), info.Chat.String()); err2 == nil && u2 != "" {
+														if _, dup := seenURL[u2]; !dup {
+															seenURL[u2] = struct{}{}
+															select {
+															case b.mediaJobs <- MediaJob{ResponseID: responseID, ChatID: info.Chat.String(), MsgID: info.ID, URL: u2, MimeType: "", Kind: "cdn"}:
+															default:
+																processedImages.Delete(responseID)
+															}
+														}
+													}
+												}
 											}
 										}
 									}
@@ -326,18 +326,7 @@ func (b *bridge) handle(raw any) {
 		b.setConn(false)
 		go func() {
 			time.Sleep(3 * time.Second)
-			if b.client.Store.ID == nil {
-				return
-			}
-			if b.client.IsConnected() {
-				return
-			}
-			b.addLog("info", "reconnect setelah StreamReplaced...", nil)
-			if err := b.client.Connect(); err != nil {
-				b.addLog("warn", "reconnect StreamReplaced gagal: "+err.Error(), nil)
-			} else {
-				b.addLog("info", "reconnect StreamReplaced OK", nil)
-			}
+			b.reconnect()
 		}()
 	case *events.ConnectFailure:
 		b.addLog("warn", fmt.Sprintf("WA connect failure reason=%v msg=%s", evt.Reason, evt.Message), nil)

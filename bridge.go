@@ -30,6 +30,38 @@ type bridge struct {
 	stateWriteCh chan stateWriteJob
 	telemetryCh  chan telemetryJob
 	dbMu         sync.Mutex
+	reconnectMu  sync.Mutex
+}
+
+func (b *bridge) connectWithRetry() error {
+	var lastErr error
+	for attempt := 0; attempt < 6; attempt++ {
+		if b.client.IsConnected() {
+			return nil
+		}
+		if err := b.client.Connect(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			b.addLog("warn", fmt.Sprintf("WA connect gagal attempt=%d: %v", attempt+1, err), nil)
+		}
+		time.Sleep(time.Duration(attempt+1) * 3 * time.Second)
+	}
+	return lastErr
+}
+
+func (b *bridge) reconnect() {
+	b.reconnectMu.Lock()
+	defer b.reconnectMu.Unlock()
+	if b.client.Store.ID == nil || b.client.IsConnected() {
+		return
+	}
+	b.addLog("info", "WA reconnect dimulai", nil)
+	if err := b.client.Connect(); err != nil {
+		b.addLog("warn", "WA reconnect gagal: "+err.Error(), nil)
+		return
+	}
+	b.addLog("info", "WA reconnect berhasil", nil)
 }
 
 func (b *bridge) setConn(v bool) {

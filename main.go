@@ -141,6 +141,12 @@ func main() {
 	}
 	client := whatsmeow.NewClient(device, waLog.Stdout("wa", envStr("LOG_LEVEL", "DEBUG"), true))
 	b := &bridge{client: client, container: container, logs: &logStore{}}
+	client.EnableAutoReconnect = true
+	client.InitialAutoReconnect = true
+	client.AutoReconnectHook = func(err error) bool {
+		b.addLog("warn", "WA auto-reconnect gagal: "+err.Error(), nil)
+		return true
+	}
 	rawDB, _ := sql.Open(driver, dsn)
 	if rawDB != nil {
 		b.stateDB = rawDB
@@ -175,16 +181,27 @@ func main() {
 	}()
 	if client.Store.ID == nil {
 		b.phone = os.Getenv("WA_PHONE")
-		if err := client.Connect(); err != nil {
+		if err := b.connectWithRetry(); err != nil {
 			log.Fatal(err)
 		}
 		b.addLog("info", "siap. minta pairing code dari web (/api/pair).", nil)
-	} else if err := client.Connect(); err != nil {
+	} else if err := b.connectWithRetry(); err != nil {
 		log.Fatal(err)
 	} else {
 		b.addLog("info", "sesi pulih, terhubung. BOT="+botJID.String(), nil)
 	}
+	if client.Store.ID != nil && !client.WaitForConnection(30*time.Second) {
+		b.addLog("warn", "WA belum connected setelah startup wait", nil)
+	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		ready := client.Store.ID != nil && client.IsConnected()
+		if !ready {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"ok": ready, "logged": client.Store.ID != nil, "connected": client.IsConnected(), "ready": ready})
+	})
 	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		b.pm.RLock()
 		defer b.pm.RUnlock()

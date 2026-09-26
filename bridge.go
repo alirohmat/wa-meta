@@ -49,6 +49,7 @@ type generateJob struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Error     string    `json:"error,omitempty"`
+	WantMedia bool      `json:"want_media"`
 }
 
 func (b *bridge) putJob(j *generateJob) {
@@ -116,7 +117,8 @@ func (b *bridge) watchGenerateJob(id, target string, sentAt time.Time, snapN int
 			return
 		}
 		j.Reply, j.Media, j.UpdatedAt = reply, media, time.Now()
-		if reply != "" && len(media) > 0 {
+		wantMedia := j.WantMedia
+		if reply != "" && (!wantMedia || len(media) > 0) {
 			j.Status = "completed"
 		} else if reply != "" {
 			j.Status = "processing_media"
@@ -124,7 +126,7 @@ func (b *bridge) watchGenerateJob(id, target string, sentAt time.Time, snapN int
 			j.Status = "processing"
 		}
 		b.jobsMu.Unlock()
-		if reply != "" && len(media) > 0 {
+		if reply != "" && (!wantMedia || len(media) > 0) {
 			return
 		}
 		<-tick.C

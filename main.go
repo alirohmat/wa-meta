@@ -380,7 +380,9 @@ func main() {
 			return
 		}
 		b.addLog("bot", fmt.Sprintf("BOT OUT %s [conversation] %s", to.String(), txt), map[string]any{"dir": "OUT", "text": txt, "to": to.String()})
-		job := &generateJob{ID: "job_" + uuid.NewString(), Status: "queued", To: to.String(), Text: txt, CreatedAt: sentAt, UpdatedAt: time.Now()}
+		lowerText := strings.ToLower(txt)
+		wantMedia := strings.Contains(lowerText, "gambar") || strings.Contains(lowerText, "image") || strings.Contains(lowerText, "foto") || strings.Contains(lowerText, "poster") || strings.Contains(lowerText, "video")
+		job := &generateJob{ID: "job_" + uuid.NewString(), Status: "queued", To: to.String(), Text: txt, CreatedAt: sentAt, UpdatedAt: time.Now(), WantMedia: wantMedia}
 		b.putJob(job)
 		go b.watchGenerateJob(job.ID, to.String(), sentAt, snapN)
 		w.Header().Set("Content-Type", "application/json")

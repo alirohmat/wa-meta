@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow"
@@ -379,6 +380,12 @@ func main() {
 			return
 		}
 		b.addLog("bot", fmt.Sprintf("BOT OUT %s [conversation] %s", to.String(), txt), map[string]any{"dir": "OUT", "text": txt, "to": to.String()})
+		job := &generateJob{ID: "job_" + uuid.NewString(), Status: "queued", To: to.String(), Text: txt, CreatedAt: sentAt, UpdatedAt: time.Now()}
+		b.putJob(job)
+		go b.watchGenerateJob(job.ID, to.String(), sentAt, snapN)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"ok": true, "job_id": job.ID, "status": job.Status, "to": to.String(), "sent_text": txt})
+		return
 		deadline := time.Now().Add(time.Duration(timeout) * time.Second)
 		var reply string
 		var replyRaw string
@@ -560,6 +567,21 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"ok": true, "to": to.String(), "sent_text": txt, "reply": reply, "media": newMedia, "media_full": full, "container_refs": dedupeStrings(containerURL.FindAllString(reply, -1)), "elapsed_ms": time.Since(sentAt).Milliseconds()})
+	}))
+	mux.HandleFunc("/api/jobs/", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/api/jobs/")
+		job := b.getJob(id)
+		if job == nil {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "job tidak ditemukan"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(job)
 	}))
 	mux.HandleFunc("/api/logout", requireAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		b.pm.Lock()

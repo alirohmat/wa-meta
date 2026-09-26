@@ -8,6 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +35,107 @@ type bridge struct {
 	telemetryCh  chan telemetryJob
 	dbMu         sync.Mutex
 	reconnectMu  sync.Mutex
+	jobsMu       sync.RWMutex
+	jobs         map[string]*generateJob
+}
+
+type generateJob struct {
+	ID        string    `json:"job_id"`
+	Status    string    `json:"status"`
+	To        string    `json:"to"`
+	Text      string    `json:"text"`
+	Reply     string    `json:"reply,omitempty"`
+	Media     []string  `json:"media,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Error     string    `json:"error,omitempty"`
+}
+
+func (b *bridge) putJob(j *generateJob) {
+	b.jobsMu.Lock()
+	if b.jobs == nil {
+		b.jobs = make(map[string]*generateJob)
+	}
+	b.jobs[j.ID] = j
+	b.jobsMu.Unlock()
+}
+
+func (b *bridge) getJob(id string) *generateJob {
+	b.jobsMu.RLock()
+	j := b.jobs[id]
+	if j != nil {
+		copy := *j
+		copy.Media = append([]string(nil), j.Media...)
+		j = &copy
+	}
+	b.jobsMu.RUnlock()
+	return j
+}
+
+func (b *bridge) watchGenerateJob(id, target string, sentAt time.Time, snapN int) {
+	deadline := time.Now().Add(15 * time.Minute)
+	tick := time.NewTicker(2 * time.Second)
+	defer tick.Stop()
+	for time.Now().Before(deadline) {
+		reply := ""
+		all := b.logs.all()
+		start := snapN
+		if start > len(all) {
+			start = len(all)
+		}
+		for _, e := range all[start:] {
+			if e.Level != "bot" {
+				continue
+			}
+			ex, ok := e.Extra.(map[string]any)
+			if !ok || ex["dir"] != "IN" || ex["chat"] != target {
+				continue
+			}
+			if text, ok := ex["text"].(string); ok && strings.TrimSpace(text) != "" {
+				reply = text
+			}
+		}
+		media := []string{}
+		_ = filepath.WalkDir(mediaDir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil || info.ModTime().Before(sentAt) {
+				return nil
+			}
+			rel, _ := filepath.Rel(mediaDir, p)
+			media = append(media, publicPrefix+"/"+filepath.ToSlash(rel))
+			return nil
+		})
+		sort.Strings(media)
+		b.jobsMu.Lock()
+		j := b.jobs[id]
+		if j == nil {
+			b.jobsMu.Unlock()
+			return
+		}
+		j.Reply, j.Media, j.UpdatedAt = reply, media, time.Now()
+		if reply != "" && len(media) > 0 {
+			j.Status = "completed"
+		} else if reply != "" {
+			j.Status = "processing_media"
+		} else {
+			j.Status = "processing"
+		}
+		b.jobsMu.Unlock()
+		if reply != "" && len(media) > 0 {
+			return
+		}
+		<-tick.C
+	}
+	b.jobsMu.Lock()
+	if j := b.jobs[id]; j != nil {
+		j.Status = "timeout"
+		j.Error = "balasan Meta belum lengkap setelah 15 menit"
+		j.UpdatedAt = time.Now()
+	}
+	b.jobsMu.Unlock()
 }
 
 func (b *bridge) connectWithRetry() error {
